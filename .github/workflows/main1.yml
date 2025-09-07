@@ -1,0 +1,59 @@
+name: Ubuntu-RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Update and Install Desktop + RDP
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils \
+            xrdp curl wget unzip
+          
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+          # Create RDP user with secure password
+          PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12)
+          sudo useradd -m -s /bin/bash rdpuser
+          echo "rdpuser:$PASSWORD" | sudo chpasswd
+          sudo usermod -aG sudo rdpuser
+          
+          echo "RDP_USER=rdpuser" >> $GITHUB_ENV
+          echo "RDP_PASS=$PASSWORD" >> $GITHUB_ENV
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-${{ github.run_id }}
+
+          # Save IP
+          TSIP=$(tailscale ip -4 | head -n 1)
+          echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
+
+      - name: Verify RDP Port
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          nc -zv $TAILSCALE_IP 3389 || (echo "RDP not reachable" && exit 1)
+
+      - name: Show RDP Credentials
+        run: |
+          echo "============================"
+          echo "Connect via RDP client:"
+          echo "IP: $TAILSCALE_IP"
+          echo "Username: $RDP_USER"
+          echo "Password: $RDP_PASS"
+          echo "============================"
+
+      - name: Keep Alive
+        run: |
+          while true; do
+            echo "[$(date)] RDP running..."
+            sleep 300
+          done
