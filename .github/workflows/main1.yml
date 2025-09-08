@@ -15,9 +15,21 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils \
             xrdp curl wget unzip
-          
+
+          # Fix XRDP startup to always launch XFCE
+          echo "startxfce4" | sudo tee /etc/skel/.xsession
+          echo "startxfce4" > ~/.xsession
+          sudo tee /etc/xrdp/startwm.sh > /dev/null <<EOL
+          #!/bin/sh
+          export GNOME_SHELL_SESSION_MODE=ubuntu
+          export XDG_CURRENT_DESKTOP=XFCE
+          export XDG_SESSION_TYPE=x11
+          startxfce4
+          EOL
+          sudo chmod +x /etc/xrdp/startwm.sh
+
           sudo systemctl enable xrdp
-          sudo systemctl start xrdp
+          sudo systemctl restart xrdp
 
           # Create RDP user with secure password
           PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12)
