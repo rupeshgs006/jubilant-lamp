@@ -13,17 +13,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils \
+            xfce4 xfce4-goodies xfce4-session xfconf \
+            xorg dbus-x11 x11-xserver-utils \
             xrdp curl wget unzip
 
-          # Fix XRDP startup to always launch XFCE
+          # Create RDP user with secure password
+          PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12)
+          sudo useradd -m -s /bin/bash rdpuser
+          echo "rdpuser:$PASSWORD" | sudo chpasswd
+          sudo usermod -aG sudo rdpuser
+
+          # Configure XFCE startup for all users
           echo "startxfce4" | sudo tee /etc/skel/.xsession
-          echo "startxfce4" > ~/.xsession
-          sudo tee /etc/xrdp/startwm.sh > /dev/null <<EOL
+          echo "startxfce4" | sudo tee /home/rdpuser/.xsession
+          sudo chown rdpuser:rdpuser /home/rdpuser/.xsession
+
+          # Fix xrdp startup script
+          sudo tee /etc/xrdp/startwm.sh > /dev/null <<'EOL'
           #!/bin/sh
-          export GNOME_SHELL_SESSION_MODE=ubuntu
-          export XDG_CURRENT_DESKTOP=XFCE
-          export XDG_SESSION_TYPE=x11
+          if [ -r /etc/default/locale ]; then
+            . /etc/default/locale
+            export LANG LANGUAGE
+          fi
           startxfce4
           EOL
           sudo chmod +x /etc/xrdp/startwm.sh
@@ -31,12 +42,7 @@ jobs:
           sudo systemctl enable xrdp
           sudo systemctl restart xrdp
 
-          # Create RDP user with secure password
-          PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12)
-          sudo useradd -m -s /bin/bash rdpuser
-          echo "rdpuser:$PASSWORD" | sudo chpasswd
-          sudo usermod -aG sudo rdpuser
-          
+          # Export RDP credentials
           echo "RDP_USER=rdpuser" >> $GITHUB_ENV
           echo "RDP_PASS=$PASSWORD" >> $GITHUB_ENV
 
